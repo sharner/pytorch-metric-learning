@@ -3,11 +3,11 @@
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
-import record_keeper
+# import record_keeper
 import torch
 import sys, os
 import torch.nn as nn
-import umap
+# import umap
 from cycler import cycler
 from PIL import Image
 from torchvision import datasets, transforms
@@ -28,7 +28,7 @@ logging.info("VERSION %s" % pytorch_metric_learning.__version__)
 # SETTINGS
 
 effnet = list_models("efficientnet_b4")[0]
-num_classes = 1596 # from pretraining
+num_classes = 4635 # from pretraining
 output_dim = 1792
 input_dim_resize = 650
 input_dim_crop = 600
@@ -37,14 +37,15 @@ embedding_dim = 128
 # input_dim_crop = 64
 
 # Set other training parameters
-batch_size = 8  # This is far to small!! Need a bigger GPU
+batch_size = 2  # This is far to small!! Need a bigger GPU
 num_epochs = 20
 margin = 0.1
 m_per_class = 2
-eval_batch_size = 32
+eval_batch_size = 1
 eval_k="max_bin_count"
 patience=3
 lr=0.001
+model_lr=0.00001
 # eval_k=10
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
@@ -52,10 +53,10 @@ eval_device = torch.device("cpu")
 # NOTE: I don't think these params are going to do the right thing - revisit this choice
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
-traindir = "/data/n1_crops_dataset/feather/train"
-testdir = "/data/n1_crops_dataset/feather/test"
+traindir = "/data/n1_crops_multi_dataset/train"
+testdir = "/data/n1_crops_multi_dataset/test"
 pretrained=True
-CHECKPOINT = "/data/sa_models/metric_dim_64/trunk_best11.pth"
+CHECKPOINT = "/results/n1_crops_multi_dataset/effv2_m.randaug.m5.mstd0.1/last_model.pth"
 
 # EMBEDDER
 
@@ -106,10 +107,11 @@ trunk = torch.nn.DataParallel(trunk.to(device))
 embedder = torch.nn.DataParallel(MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
 
 # Set optimizers
-trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=0.00001, weight_decay=0.0001)
+trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=0.0001)
 embedder_optimizer = torch.optim.Adam(
     embedder.parameters(), lr=lr, weight_decay=0.0001
 )
+loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=0.0001)
 
 train_dataset = datasets.ImageFolder(
     traindir,
@@ -146,6 +148,7 @@ models = {"trunk": trunk, "embedder": embedder}
 optimizers = {
     "trunk_optimizer": trunk_optimizer,
     "embedder_optimizer": embedder_optimizer,
+    # 'metric_loss_optimizer': loss_optimizer,
 }
 loss_funcs = {"metric_loss": loss}
 mining_funcs = {"tuple_miner": miner}
@@ -194,16 +197,41 @@ end_of_epoch_hook = hooks.end_of_epoch_hook(
 
 # TRAINER
 
-trainer = trainers.MetricLossOnly(
+class MetricLossAccumGrad(trainers.MetricLossOnly):
+    def __init__(self, *args, accumulation_steps=10, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.accumulation_steps = accumulation_steps
+
+    def forward_and_backward(self):
+        self.zero_losses()
+        self.update_loss_weights()
+        self.calculate_loss(self.get_batch())
+        self.loss_tracker.update(self.loss_weights)
+        self.backward()
+        self.clip_gradients()
+        if ((self.iteration + 1) % self.accumulation_steps == 0) or ((self.iteration + 1) == np.ceil(len(self.dataset) / self.batch_size)):
+            self.step_optimizers()
+            self.zero_grad()
+
+    def calculate_loss(self, curr_batch):
+        data, labels = curr_batch
+        with torch.cuda.amp.autocast():
+            embeddings = self.compute_embeddings(data)
+            indices_tuple = self.maybe_mine_embeddings(embeddings, labels)
+            self.losses["metric_loss"] = self.maybe_get_metric_loss(
+                embeddings, labels, indices_tuple
+            )
+
+trainer = MetricLossAccumGrad(
     models,
     optimizers,
     batch_size,
     loss_funcs,
-    mining_funcs,
     train_dataset,
+    mining_funcs=mining_funcs,
     sampler=sampler,
     dataloader_num_workers=2,
-    end_of_iteration_hook=hooks.end_of_iteration_hook,
+    # end_of_iteration_hook=hooks.end_of_iteration_hook,
     end_of_epoch_hook=end_of_epoch_hook,
 )
 
