@@ -7,6 +7,10 @@ import numpy as np
 import torch
 import sys, os
 import torch.nn as nn
+import argparse
+from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
+
+import lj_triplet_sampling as lj
 # import umap
 from cycler import cycler
 from PIL import Image
@@ -26,26 +30,64 @@ logging.getLogger().setLevel(logging.INFO)
 logging.info("VERSION %s" % pytorch_metric_learning.__version__)
 
 # SETTINGS
+parser = argparse.ArgumentParser(description='PyTorch Metric Training')
+parser.add_argument('data', help='path to dataset')
+parser.add_argument('--triplet-json', type=str, default=None,
+                    help="triplet samples as a json file")
+parser.add_argument('--compute-triplet', type=bool, default=False,
+                    action='store_true', help="compute the set of triplets")
+parser.add_argument('--allow-copies', type=bool, default=False,
+                    action='store_true', help="if compute triplets, then allow image copies")
+parser.add_argument('-j', '--workers', default=2, type=int,
+                    help='number of data loading workers')
+parser.add_argument('--epochs', default=50, type=int,
+                    help='number of total epochs to run')
+parser.add_argument('--start-epoch', default=0, type=int,
+                    help='manual epoch number')
+parser.add_argument('-b', '--batch-size', default=8, type=int,
+                    help='mini-batch size')
+parser.add_argument('-b', '--eval-batch-size', default=1, type=int,
+                    help='evaluation batch size')
+parser.add_argument('--modellr', default=0.00001, type=float,
+                    help='initial model learning rate')
+parser.add_argument('--lr', default=0.001, type=float,
+                    help='optimizer learning rate')
+parser.add_argument('--dim', default=128, type=int,
+                    help='dimensionality of embeddings')
+parser.add_argument('--output-dim', default=1792, type=int,
+                    help='dimensionality of model output')
+parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
+                    help='weight decay', dest='weight_decay')
+parser.add_argument('--margin', default=0.01, type=float, help='margin')
+parser.add_argument('--backbone', default='efficientnet_b7', type=str,
+                    help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
+parser.add_argument('--rand_config', default='rand-mstd1',
+                    help='Random augment configuration string')
+parser.add_argument('--resume', default=None, help='resume from given file')
+parser.add_argument('--eval-only', default=False, action='store_true',
+                    help='evaluate model only')
 
-effnet = list_models("efficientnet_b4")[0]
-num_classes = 4635 # from pretraining
-output_dim = 1792
+args = parser.parse_args()
+effnet = list_models(args.backbone)[0]
+toplevel_dir = args.data
+output_dim = args.output_dim
 input_dim_resize = 650
 input_dim_crop = 600
-embedding_dim = 128
+embedding_dim = args.dim
 # input_dim_resize = 64
 # input_dim_crop = 64
 
 # Set other training parameters
-batch_size = 2  # This is far to small!! Need a bigger GPU
-num_epochs = 20
-margin = 0.1
+batch_size = args.batch_size
+num_epochs = args.epochs
+margin = args.margin
+wd = args.weight_decay
 m_per_class = 2
-eval_batch_size = 1
+eval_batch_size = args.eval_batch_size
 eval_k="max_bin_count"
 patience=3
-lr=0.001
-model_lr=0.00001
+lr=args.lr
+model_lr=args.modellr
 # eval_k=10
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
@@ -53,10 +95,9 @@ eval_device = torch.device("cpu")
 # NOTE: I don't think these params are going to do the right thing - revisit this choice
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
-traindir = "/data/n1_crops_multi_dataset/train"
-testdir = "/data/n1_crops_multi_dataset/test"
+traindir = os.path.join(toplevel_dir, "train")
+testdir = os.path.join(toplevel_dir, "test")
 pretrained=True
-CHECKPOINT = "/results/n1_crops_multi_dataset/effv2_m.randaug.m5.mstd0.1/last_model.pth"
 
 # EMBEDDER
 
@@ -92,12 +133,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # trunk.reset_classifier(0)
 
 # Using large pretrained efficientnet
-trunk = EfficientNet.from_pretrained("efficientnet-b7", output_dim)
+#trunk = EfficientNet.from_pretrained("efficientnet-b7", output_dim)
+trunk = EfficientNet.from_pretrained(effnet, output_dim)
 num_ftrs = trunk._fc.in_features
 trunk._fc = nn.Linear(num_ftrs, output_dim)
 trunk.set_swish(memory_efficient=False)
 
-# checkpoint = torch.load(CHECKPOINT)
+# checkpoint = torch.load(args.resume)
 # trunk.load_state_dict(checkpoint)
 # Set classification head to identity
 trunk_output_size = output_dim
@@ -107,13 +149,42 @@ trunk = torch.nn.DataParallel(trunk.to(device))
 embedder = torch.nn.DataParallel(MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
 
 # Set optimizers
-trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=0.0001)
+trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
 embedder_optimizer = torch.optim.Adam(
-    embedder.parameters(), lr=lr, weight_decay=0.0001
+    embedder.parameters(), lr=lr, weight_decay=wd
 )
-loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=0.0001)
+loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
 
-train_dataset = datasets.ImageFolder(
+class TrainLoader(datasets.ImageFolder):
+    """
+    Allow external specification of triplet samples
+    """
+    def __init__(
+        self,
+        root: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
+        triplet_json_file : Optional[str] = None,
+        compute_triplet : Optional[bool] = False,
+        batch_size : Optional[int] = 8,
+        allow_copies : Optional[bool] = False,
+        weights : Optional[Dict[str, Dict[str, float]]] = None
+    ):
+        super().__init__(
+            root,
+            transform=transform,
+            target_transform=target_transform,
+            is_valid_file=is_valid_file,
+        )
+
+        if triplet_json_file:
+            self.samples = lj.lj_triplet_read(triplet_json_file)
+        elif compute_triplet:
+            self.samples = lj.lj_triplet_sampling(root, batch_size, allow_copies, weights=weights)
+        self.n_classes, self.n_images, _, _, _ = lj.lj_analyze(self.samples)
+
+train_dataset = TrainLoader(
     traindir,
     transforms.Compose([
         transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
@@ -121,7 +192,34 @@ train_dataset = datasets.ImageFolder(
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize,
-    ]))
+        ]),
+    triplet_json_file=args.triplet_json,
+    compute_triplet=args.compute_triplet,
+    batch_size = batch_size,
+    allow_copies = args.allow_copies
+)
+
+# Retrieve the number of classes from the loader
+num_classes = train_dataset.n_classes
+
+# train_dataset = datasets.ImageFolder(
+#     traindir,
+#     transforms.Compose([
+#         transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
+#         transforms.RandomResizedCrop(input_dim_crop),
+#         transforms.RandomHorizontalFlip(),
+#         transforms.ToTensor(),
+#         normalize,
+#     ]))
+
+# If use external triplet specification, do not use sampler.
+if args.triplet_json or args.compute_triplet:
+    sampler = None
+else:
+    # Set the dataloader sampler
+    sampler = samplers.MPerClassSampler(train_dataset.targets,
+                                        m=m_per_class,
+                                        length_before_new_iter=len(train_dataset))
 
 val_dataset = datasets.ImageFolder(testdir, transforms.Compose([
         transforms.Resize(input_dim_resize),
@@ -137,11 +235,6 @@ loss = losses.TripletMarginLoss(margin=margin)
 
 # Set the mining function
 miner = miners.MultiSimilarityMiner(epsilon=margin)
-
-# Set the dataloader sampler
-sampler = samplers.MPerClassSampler(
-    train_dataset.targets, m=m_per_class, length_before_new_iter=len(train_dataset)
-)
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}
