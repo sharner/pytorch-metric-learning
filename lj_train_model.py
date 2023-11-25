@@ -34,9 +34,9 @@ parser = argparse.ArgumentParser(description='PyTorch Metric Training')
 parser.add_argument('data', help='path to dataset')
 parser.add_argument('--triplet-json', type=str, default=None,
                     help="triplet samples as a json file")
-parser.add_argument('--compute-triplet', type=bool, default=False,
+parser.add_argument('--compute-triplet', default=False,
                     action='store_true', help="compute the set of triplets")
-parser.add_argument('--allow-copies', type=bool, default=False,
+parser.add_argument('--allow-copies', default=False,
                     action='store_true', help="if compute triplets, then allow image copies")
 parser.add_argument('-j', '--workers', default=2, type=int,
                     help='number of data loading workers')
@@ -46,7 +46,7 @@ parser.add_argument('--start-epoch', default=0, type=int,
                     help='manual epoch number')
 parser.add_argument('-b', '--batch-size', default=8, type=int,
                     help='mini-batch size')
-parser.add_argument('-b', '--eval-batch-size', default=1, type=int,
+parser.add_argument('--eval-batch-size', default=1, type=int,
                     help='evaluation batch size')
 parser.add_argument('--modellr', default=0.00001, type=float,
                     help='initial model learning rate')
@@ -59,23 +59,27 @@ parser.add_argument('--output-dim', default=1792, type=int,
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     help='weight decay', dest='weight_decay')
 parser.add_argument('--margin', default=0.01, type=float, help='margin')
-parser.add_argument('--backbone', default='efficientnet_b7', type=str,
+parser.add_argument('--backbone', default='efficientnet-b7', type=str,
                     help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
 parser.add_argument('--rand_config', default='rand-mstd1',
                     help='Random augment configuration string')
 parser.add_argument('--resume', default=None, help='resume from given file')
 parser.add_argument('--eval-only', default=False, action='store_true',
                     help='evaluate model only')
+parser.add_argument('--base-log-dir', default=".", type=str,
+                    help = 'base directory for all logs')
+parser.add_argument('--input-size', default=650, type=int,
+                    help='resize images to this size for input')
+parser.add_argument('--input-crop', default=600, type=int,
+                    help='random crop images to this size')
 
 args = parser.parse_args()
-effnet = list_models(args.backbone)[0]
+models_with_backbone = list_models(args.backbone)
 toplevel_dir = args.data
 output_dim = args.output_dim
-input_dim_resize = 650
-input_dim_crop = 600
+input_dim_resize = args.input_size
+input_dim_crop = args.input_crop
 embedding_dim = args.dim
-# input_dim_resize = 64
-# input_dim_crop = 64
 
 # Set other training parameters
 batch_size = args.batch_size
@@ -134,7 +138,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Using large pretrained efficientnet
 #trunk = EfficientNet.from_pretrained("efficientnet-b7", output_dim)
-trunk = EfficientNet.from_pretrained(effnet, output_dim)
+try:
+    trunk = EfficientNet.from_pretrained(args.backbone, output_dim)
+except:
+    print("Model {} not found!".format(args.backbone))
+    print("List of models:\n{}".format(list_models()))
+    raise
+
 num_ftrs = trunk._fc.in_features
 trunk._fc = nn.Linear(num_ftrs, output_dim)
 trunk.set_swish(memory_efficient=False)
@@ -248,12 +258,16 @@ mining_funcs = {"tuple_miner": miner}
 
 # HOOKS
 
+log_dir = os.path.join(args.base_log_dir, "lj_logs")
+tensor_dir = os.path.join(args.base_log_dir, "lj_tensorboard")
+model_dir = os.path.join(args.base_log_dir, "lj_saved_models")
+
 record_keeper, _, _ = logging_presets.get_record_keeper(
-    "lj_logs", "lj_tensorboard"
+    log_dir, tensor_dir
 )
 hooks = logging_presets.get_hook_container(record_keeper)
 dataset_dict = {"val": val_dataset}
-model_folder = "lj_saved_models"
+model_folder = model_dir
 
 def visualizer_hook(umapper, umap_embeddings, labels, split_name, keyname, *args):
     logging.info(

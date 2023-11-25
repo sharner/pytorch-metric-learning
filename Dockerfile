@@ -4,10 +4,10 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG MINICONDA="Miniconda3-py38_4.9.2-Linux-x86_64.sh"
+ARG MINICONDA="Miniconda3-py310_23.1.0-1-Linux-x86_64.sh"
 
-ARG USER_ID
-ARG GROUP_ID
+ARG USER_ID=1000
+ARG GROUP_ID=1000
 
 # Install apt dependencies
 RUN apt-get update && apt-get install -y \
@@ -27,7 +27,8 @@ RUN apt-get update && apt-get install -y \
 
 # Simple root password in case we want to customize the container
 RUN echo "root:root" | chpasswd
-
+RUN echo "Group ID $GROUP_ID"
+RUN echo "User id $USER_ID"
 RUN addgroup --gid $GROUP_ID user
 
 RUN useradd -G video,audio -ms /bin/bash --uid $USER_ID --gid $GROUP_ID user
@@ -46,8 +47,6 @@ ENV PATH=$PATH
 ENV PYTHONPATH=$LAYERJOT_HOME/FGVC-PIM
 
 RUN wget https://repo.anaconda.com/miniconda/${MINICONDA} \
-    && echo "1314b90489f154602fd794accfc90446111514a5a72fe1f71ab83e07de9504a7 ${MINICONDA}" > sha1sums.txt \
-    && sha256sum -c sha1sums.txt \
     && bash ${MINICONDA} -b -p miniconda
 
 ENV PATH=/workspace/miniconda/bin:$PATH
