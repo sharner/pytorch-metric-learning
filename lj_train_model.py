@@ -11,6 +11,8 @@ import argparse
 from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
 
 import lj_triplet_sampling as lj
+import lj_common_model as lj_com
+
 # import umap
 from cycler import cycler
 from PIL import Image
@@ -30,50 +32,9 @@ logging.getLogger().setLevel(logging.INFO)
 logging.info("VERSION %s" % pytorch_metric_learning.__version__)
 
 # SETTINGS
-parser = argparse.ArgumentParser(description='PyTorch Metric Training')
-parser.add_argument('data', help='path to dataset')
-parser.add_argument('--triplet-json', type=str, default=None,
-                    help="triplet samples as a json file")
-parser.add_argument('--compute-triplet', default=False,
-                    action='store_true', help="compute the set of triplets")
-parser.add_argument('--allow-copies', default=False,
-                    action='store_true', help="if compute triplets, then allow image copies")
-parser.add_argument('-j', '--workers', default=2, type=int,
-                    help='number of data loading workers')
-parser.add_argument('--epochs', default=50, type=int,
-                    help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int,
-                    help='manual epoch number')
-parser.add_argument('-b', '--batch-size', default=8, type=int,
-                    help='mini-batch size')
-parser.add_argument('--eval-batch-size', default=1, type=int,
-                    help='evaluation batch size')
-parser.add_argument('--modellr', default=0.00001, type=float,
-                    help='initial model learning rate')
-parser.add_argument('--lr', default=0.001, type=float,
-                    help='optimizer learning rate')
-parser.add_argument('--dim', default=128, type=int,
-                    help='dimensionality of embeddings')
-parser.add_argument('--output-dim', default=1792, type=int,
-                    help='dimensionality of model output')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    help='weight decay', dest='weight_decay')
-parser.add_argument('--margin', default=0.01, type=float, help='margin')
-parser.add_argument('--backbone', default='efficientnet-b7', type=str,
-                    help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
-parser.add_argument('--rand_config', default='rand-mstd1',
-                    help='Random augment configuration string')
-parser.add_argument('--resume', default=None, help='resume from given file')
-parser.add_argument('--eval-only', default=False, action='store_true',
-                    help='evaluate model only')
-parser.add_argument('--base-log-dir', default=".", type=str,
-                    help = 'base directory for all logs')
-parser.add_argument('--input-size', default=650, type=int,
-                    help='resize images to this size for input')
-parser.add_argument('--input-crop', default=600, type=int,
-                    help='random crop images to this size')
-
+parser = lj_com.create_parser()
 args = parser.parse_args()
+
 models_with_backbone = list_models(args.backbone)
 toplevel_dir = args.data
 output_dim = args.output_dim
@@ -103,28 +64,7 @@ traindir = os.path.join(toplevel_dir, "train")
 testdir = os.path.join(toplevel_dir, "test")
 pretrained=True
 
-# EMBEDDER
-
-class MLP(nn.Module):
-    # layer_sizes[0] is the dimension of the input
-    # layer_sizes[-1] is the dimension of the output
-    def __init__(self, layer_sizes, final_relu=False):
-        super().__init__()
-        layer_list = []
-        layer_sizes = [int(x) for x in layer_sizes]
-        num_layers = len(layer_sizes) - 1
-        final_relu_layer = num_layers if final_relu else num_layers - 1
-        for i in range(len(layer_sizes) - 1):
-            input_size = layer_sizes[i]
-            curr_size = layer_sizes[i + 1]
-            if i < final_relu_layer:
-                layer_list.append(nn.ReLU(inplace=False))
-            layer_list.append(nn.Linear(input_size, curr_size))
-        self.net = nn.Sequential(*layer_list)
-        self.last_linear = self.net[-1]
-
-    def forward(self, x):
-        return self.net(x)
+# EMBEDDER is lj_com.MLP
 
 # TRUNK
 
@@ -156,7 +96,7 @@ trunk_output_size = output_dim
 trunk = torch.nn.DataParallel(trunk.to(device))
 
 # Set embedder model. This takes in the output of the trunk and outputs the embedding dimension
-embedder = torch.nn.DataParallel(MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
+embedder = torch.nn.DataParallel(lj_com.MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
 
 # Set optimizers
 trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
