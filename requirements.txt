@@ -17,3 +17,4 @@ timm==0.5.4
 umap-learn==0.5.3
 efficientnet_pytorch==0.7.1
 protobuf==3.19.0
+google-cloud-logging=3.9.0

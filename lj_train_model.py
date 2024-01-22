@@ -12,17 +12,32 @@ from cycler import cycler
 from PIL import Image
 from torchvision import datasets, transforms
 
+from google.cloud.logging.handlers import StructuredLogHandler
+
 import pytorch_metric_learning
 import pytorch_metric_learning.utils.logging_presets as logging_presets
 from pytorch_metric_learning import losses, miners, samplers, testers, trainers
 from pytorch_metric_learning.utils import common_functions
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
-sys.path.append(os.path.join('/layerjot', 'pytorch-image-models'))
 from timm.models import create_model, list_models
 from efficientnet_pytorch import EfficientNet
 
-logging.getLogger().setLevel(logging.INFO)
+
+# set up logger
+logger = logging.getLogger('pytorch-metric-learning')
+if bool(os.getenv('CLOUD_LOGGING', default=False)):
+    log_handler = StructuredLogHandler()
+else:
+    log_handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    log_handler.setFormatter(formatter)
+
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
+
+sys.path.append(os.path.join('/layerjot', 'pytorch-image-models'))
+
 logging.info("VERSION %s" % pytorch_metric_learning.__version__)
 
 # SETTINGS
