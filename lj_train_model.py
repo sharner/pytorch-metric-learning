@@ -38,7 +38,7 @@ logger.addHandler(log_handler)
 
 sys.path.append(os.path.join('/layerjot', 'pytorch-image-models'))
 
-logging.info("VERSION %s" % pytorch_metric_learning.__version__)
+logger.info("VERSION %s" % pytorch_metric_learning.__version__)
 
 # SETTINGS
 
@@ -175,7 +175,7 @@ dataset_dict = {"val": val_dataset}
 model_folder = "lj_saved_models"
 
 def visualizer_hook(umapper, umap_embeddings, labels, split_name, keyname, *args):
-    logging.info(
+    logger.info(
         "UMAP plot for the {} split and label set {}".format(split_name, keyname)
     )
     label_set = np.unique(labels)
