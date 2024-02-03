@@ -1,5 +1,19 @@
+import argparse, os
+import pytorch_metric_learning
+import torch
 import torch.nn as nn
-import argparse
+import torchvision
+from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
+
+# common globals
+
+# NOTE: I don't think these params are going to do the right thing - revisit this choice
+# ??????
+mean=[0.485, 0.456, 0.406]
+std=[0.229, 0.224, 0.225]
+normalize = torchvision.transforms.Normalize(mean=mean, std=std)
+
+# common classes
 
 class MLP(nn.Module):
     # layer_sizes[0] is the dimension of the input
@@ -21,6 +35,94 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+class TrainLoader(torchvision.datasets.ImageFolder):
+    """
+    Allow external specification of triplet samples
+    """
+    def __init__(
+        self,
+        root: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
+        triplet_json_file : Optional[str] = None,
+        compute_triplet : Optional[bool] = False,
+        batch_size : Optional[int] = 8,
+        allow_copies : Optional[bool] = False,
+        weights : Optional[Dict[str, Dict[str, float]]] = None
+    ):
+        super().__init__(
+            root,
+            transform=transform,
+            target_transform=target_transform,
+            is_valid_file=is_valid_file,
+        )
+
+        if triplet_json_file:
+            self.samples = lj.lj_triplet_read(triplet_json_file)
+        elif compute_triplet:
+            self.samples = lj.lj_triplet_sampling(root, batch_size, allow_copies, weights=weights)
+        self.n_classes, self.n_images, _, _, _ = lj.lj_analyze(self.samples)
+
+class MetricLossAccumGrad(pytorch_metric_learning.trainers.MetricLossOnly):
+    def __init__(self, *args, accumulation_steps=10, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.accumulation_steps = accumulation_steps
+
+    def forward_and_backward(self):
+        self.zero_losses()
+        self.update_loss_weights()
+        self.calculate_loss(self.get_batch())
+        self.loss_tracker.update(self.loss_weights)
+        self.backward()
+        self.clip_gradients()
+        if ((self.iteration + 1) % self.accumulation_steps == 0) or ((self.iteration + 1) == np.ceil(len(self.dataset) / self.batch_size)):
+            self.step_optimizers()
+            self.zero_grad()
+
+    def calculate_loss(self, curr_batch):
+        data, labels = curr_batch
+        with torch.cuda.amp.autocast():
+            embeddings = self.compute_embeddings(data)
+            indices_tuple = self.maybe_mine_embeddings(embeddings, labels)
+            self.losses["metric_loss"] = self.maybe_get_metric_loss(
+                embeddings, labels, indices_tuple
+            )
+
+# Common methods
+            
+def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
+    """Finds the class folders in a dataset.
+
+    See :class:`DatasetFolder` for details.
+    """
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
+    if not classes:
+        raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
+
+    # classes = [int(x) for x in classes] # not sure about this.  Training doesn't assume integer labels
+    class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
+    return classes, class_to_idx
+
+def image_name_to_class(directory: str) -> Dict[str, str]:
+    img_clz = dict()
+    for clz in os.listdir(directory):
+        for img_name in os.listdir(os.path.join(directory, clz)):
+            img_clz[img_name] = clz
+    return img_clz
+
+def image_name_to_index_dictionaries(directory: str) -> Tuple[List[str], Dict[str, int], Dict[str, int]]:
+    """
+    Return list of classes, class to index and image to class index dictionaries
+    """
+    classes, class_to_idx = find_classes(directory)
+    img_clz = image_name_to_class(directory)
+
+    img_to_idx = dict()
+    for img in img_clz:
+        img_to_idx[img] = class_to_idx[img_clz[img]]
+    return classes, class_to_idx, img_to_idx
 
 def create_parser():
     # SETTINGS

@@ -7,21 +7,9 @@ import random
 import sys
 import copy
 from typing import Dict, List, Optional, Tuple
+import lj_common_model as lj_com
 
 # from PIL import Image
-
-def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
-    """Finds the class folders in a dataset.
-
-    See :class:`DatasetFolder` for details.
-    """
-    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
-    if not classes:
-        raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
-
-    class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
-    return classes, class_to_idx
-
 
 def lj_list_available(
         directory: str,
@@ -30,14 +18,14 @@ def lj_list_available(
 
     See :class:`DatasetFolder` for details.
 
-    Note: The class_to_idx parameter is here optional and will use the logic of the ``find_classes`` function
+    Note: The class_to_idx parameter is here optional and will use the logic of the ``lj_com.find_classes`` function
     by default.
 
     Note:  This is compatible with list of samples produced folder.make_dataset
     """
     directory = os.path.expanduser(directory)
 
-    _, class_to_idx = find_classes(directory)
+    _, class_to_idx = lj_com.find_classes(directory)
 
     samples = []
     available_classes = set()

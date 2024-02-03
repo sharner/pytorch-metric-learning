@@ -57,9 +57,7 @@ model_lr=args.modellr
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
 
-# NOTE: I don't think these params are going to do the right thing - revisit this choice
-normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
+normalize = lj_com.normalize
 traindir = os.path.join(toplevel_dir, "train")
 testdir = os.path.join(toplevel_dir, "test")
 pretrained=True
@@ -105,36 +103,7 @@ embedder_optimizer = torch.optim.Adam(
 )
 loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
 
-class TrainLoader(datasets.ImageFolder):
-    """
-    Allow external specification of triplet samples
-    """
-    def __init__(
-        self,
-        root: str,
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
-        is_valid_file: Optional[Callable[[str], bool]] = None,
-        triplet_json_file : Optional[str] = None,
-        compute_triplet : Optional[bool] = False,
-        batch_size : Optional[int] = 8,
-        allow_copies : Optional[bool] = False,
-        weights : Optional[Dict[str, Dict[str, float]]] = None
-    ):
-        super().__init__(
-            root,
-            transform=transform,
-            target_transform=target_transform,
-            is_valid_file=is_valid_file,
-        )
-
-        if triplet_json_file:
-            self.samples = lj.lj_triplet_read(triplet_json_file)
-        elif compute_triplet:
-            self.samples = lj.lj_triplet_sampling(root, batch_size, allow_copies, weights=weights)
-        self.n_classes, self.n_images, _, _, _ = lj.lj_analyze(self.samples)
-
-train_dataset = TrainLoader(
+train_dataset = lj_com.TrainLoader(
     traindir,
     transforms.Compose([
         transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
@@ -244,32 +213,7 @@ end_of_epoch_hook = hooks.end_of_epoch_hook(
 
 # TRAINER
 
-class MetricLossAccumGrad(trainers.MetricLossOnly):
-    def __init__(self, *args, accumulation_steps=10, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.accumulation_steps = accumulation_steps
-
-    def forward_and_backward(self):
-        self.zero_losses()
-        self.update_loss_weights()
-        self.calculate_loss(self.get_batch())
-        self.loss_tracker.update(self.loss_weights)
-        self.backward()
-        self.clip_gradients()
-        if ((self.iteration + 1) % self.accumulation_steps == 0) or ((self.iteration + 1) == np.ceil(len(self.dataset) / self.batch_size)):
-            self.step_optimizers()
-            self.zero_grad()
-
-    def calculate_loss(self, curr_batch):
-        data, labels = curr_batch
-        with torch.cuda.amp.autocast():
-            embeddings = self.compute_embeddings(data)
-            indices_tuple = self.maybe_mine_embeddings(embeddings, labels)
-            self.losses["metric_loss"] = self.maybe_get_metric_loss(
-                embeddings, labels, indices_tuple
-            )
-
-trainer = MetricLossAccumGrad(
+trainer = lj_com.MetricLossAccumGrad(
     models,
     optimizers,
     batch_size,
