@@ -5,6 +5,7 @@ from efficientnet_pytorch import EfficientNet
 import lj_common_model as lj_com
 from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.utils.inference import InferenceModel, MatchFinder
+from pytorch_metric_learning.utils import common_functions as c_f
 from timm.models import create_model, list_models
 import torch
 import torch.nn as nn
@@ -16,7 +17,7 @@ def create_embedder(trunk_output_size, embedding_dim, embedder_checkpoint):
     embedder.load_state_dict(checkpoint)
     return embedder
 
-def create_trunk(backbone, output_dim, trunk_checkpoint):
+def create_trunk(backbone, nclasses, trunk_checkpoint):
     """
     Given a backbone and a checkpoint file, return a trunk
     """
@@ -24,15 +25,15 @@ def create_trunk(backbone, output_dim, trunk_checkpoint):
     # trunk = create_model(effnet, num_classes=num_classes, pretrained=pretrained)
     # trunk.reset_classifier(0)
     try:
-        trunk = EfficientNet.from_pretrained(backbone, output_dim)
+        trunk = create_model(backbone, num_classes=nclasses, pretrained=True)
+        # trunk = EfficientNet.from_pretrained(backbone, nclasses)
+        # num_ftrs = trunk._fc.in_features
+        # trunk._fc = nn.Linear(num_ftrs, nclasses)
+        # trunk.set_swish(memory_efficient=False)
     except:
         print("Model {} not found!".format(backbone))
         print("List of models:\n{}".format(list_models()))
         raise
-
-    num_ftrs = trunk._fc.in_features
-    trunk._fc = nn.Linear(num_ftrs, output_dim)
-    trunk.set_swish(memory_efficient=False)
 
     checkpoint = torch.load(trunk_checkpoint)
     trunk.load_state_dict(checkpoint)
@@ -45,11 +46,32 @@ def create_inference_model(trunk, embedder, match_finder, val_dataset):
 
 def build_inference_model(args):
     toplevel_dir = args.data
-    output_dim = args.output_dim
+    nclasses = args.output_dim # number of classes
     input_dim_resize = args.input_size
     input_dim_crop = args.input_crop
     embedding_dim = args.dim
     eval_device = torch.device(args.eval_device)
+
+    if nclasses == 0:
+        # use training dataset to determine number of classes
+        traindir = os.path.join(toplevel_dir, "test")
+        train_dataset = lj_com.TrainLoader(
+            traindir,
+            transforms.Compose([
+                transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
+                transforms.RandomResizedCrop(input_dim_crop),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                lj_com.normalize
+                ]),
+            triplet_json_file=args.triplet_json,
+            compute_triplet=args.compute_triplet,
+            batch_size = args.batch_size,
+            allow_copies = args.allow_copies
+        )
+        # Retrieve the number of classes from the loader
+        nclasses = train_dataset.n_classes
+
     testdir = os.path.join(toplevel_dir, "test")
 
     embedding_checkpoint_file = os.path.join(args.base_output_dir, args.embedder)
@@ -62,17 +84,22 @@ def build_inference_model(args):
             lj_com.normalize,
         ]))
 
-    embedder = create_embedder(output_dim, embedding_dim, embedding_checkpoint_file)
+    print(embedding_checkpoint_file)
+    embedder = create_embedder(nclasses, embedding_dim, embedding_checkpoint_file)
     embedder = torch.nn.DataParallel(embedder).to(eval_device)
 
-    trunk = create_trunk(args.backbone, output_dim, trunk_checkpoint_file)
+    trunk = create_trunk(args.backbone, nclasses, trunk_checkpoint_file)
     trunk = torch.nn.DataParallel(trunk.to(eval_device))
 
     match_finder = MatchFinder(distance=CosineSimilarity(), threshold=args.similarity_threshold)
     inference = create_inference_model(trunk, embedder, match_finder, val_dataset)
-    return inference
+    labels_to_indices = c_f.get_labels_to_indices(val_dataset.targets)
+    return inference, val_dataset, labels_to_indices
 
-def main():
+def nearest_neighbots(inference_model, index_classA, index_classB):
+    pass
+
+def create_inference_parser():
     parser = lj_com.create_parser()
     parser.add_argument('--base-output-dir', default=".", type=str,
                         help = 'base directory for model output')
@@ -82,14 +109,17 @@ def main():
                         help="trunk checkpoint file")
     parser.add_argument('--similarity-threshold', default=0.7, type=float,
                         help="Cosine similarity threshold")
-    parser.add_argument('--eval-device', choices=["cpu", "gpu"], default="gpu")
+    parser.add_argument('--eval-device', choices=["cpu", "gpu", "cuda"], default="gpu")
+    return parser
+
+def main():
+    parser = create_inference_parser()
     args = parser.parse_args()
 
     inference = build_inference_model(args)
 
     # create list of class indices from training directory
     traindir = os.path.join(args.data, "train")
-    _, class_to_idx, image_name_to_idx = lj_com.image_name_to_index_dictionaries(traindir)
 
 
 if __name__ == '__main__':

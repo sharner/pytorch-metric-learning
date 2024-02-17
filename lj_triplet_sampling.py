@@ -11,6 +11,19 @@ import lj_common_model as lj_com
 
 # from PIL import Image
 
+def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
+    """Finds the class folders in a dataset.
+
+    See :class:`DatasetFolder` for details.
+    """
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
+    if not classes:
+        raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
+
+    # classes = [int(x) for x in classes] # not sure about this.  Training doesn't assume integer labels
+    class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
+    return classes, class_to_idx
+
 def lj_list_available(
         directory: str,
 ) -> Tuple[List[Tuple[str, int]], Dict[str,int]]:
@@ -18,14 +31,14 @@ def lj_list_available(
 
     See :class:`DatasetFolder` for details.
 
-    Note: The class_to_idx parameter is here optional and will use the logic of the ``lj_com.find_classes`` function
+    Note: The class_to_idx parameter is here optional and will use the logic of the ``find_classes`` function
     by default.
 
     Note:  This is compatible with list of samples produced folder.make_dataset
     """
     directory = os.path.expanduser(directory)
 
-    _, class_to_idx = lj_com.find_classes(directory)
+    _, class_to_idx = find_classes(directory)
 
     samples = []
     available_classes = set()
@@ -240,34 +253,3 @@ def lj_triplet_write(path : str, triplets : List[Tuple[str, int]]):
     """ 
     with open(path, "w") as outfile:
         json.dump(triplets, outfile)
-
-def lj_count_classes(triplets : List[Tuple[str, int]]) -> Dict[int, int]:
-    """
-    Return dictionary of class index to count of images
-    """
-    # dictionary of class -> n images
-    class_count = {}
-    for _, clidx in triplets:
-        if clidx not in class_count:
-            class_count[clidx] = 0
-        class_count[clidx] += 1
-    return class_count
-
-def lj_analyze(triplets : List[Tuple[str, int]]) -> Tuple[int, int, float, int, int]:
-    """
-    Return tuple of (nclasses, nimages, avg_images_per_class, min_images_in_class, max_images_in_class)
-    """
-    class_count = lj_count_classes(triplets)
-
-    n_classes = len(class_count)
-    total_images = 0
-    max_images = 0
-    min_images = sys.maxsize
-    for clidx in class_count:
-        n_images = class_count[clidx]
-        max_images = max(max_images, n_images)
-        min_images = min(min_images, n_images)
-        total_images += n_images
-
-    avg = float(total_images)/float(n_classes)
-    return (n_classes, total_images, avg, min_images, max_images)

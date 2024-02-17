@@ -24,7 +24,6 @@ from pytorch_metric_learning import losses, miners, samplers, testers, trainers
 from pytorch_metric_learning.utils import common_functions
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
-sys.path.append(os.path.join('/layerjot', 'pytorch-image-models'))
 from timm.models import create_model, list_models
 from efficientnet_pytorch import EfficientNet
 
@@ -37,7 +36,6 @@ args = parser.parse_args()
 
 models_with_backbone = list_models(args.backbone)
 toplevel_dir = args.data
-output_dim = args.output_dim
 input_dim_resize = args.input_size
 input_dim_crop = args.input_crop
 embedding_dim = args.dim
@@ -61,47 +59,9 @@ normalize = lj_com.normalize
 traindir = os.path.join(toplevel_dir, "train")
 testdir = os.path.join(toplevel_dir, "test")
 pretrained=True
-
-# EMBEDDER is lj_com.MLP
-
-# TRUNK
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Set trunk model and replace the softmax layer with an identity function
-
-# For using TIMM models
-# trunk = create_model(effnet, num_classes=num_classes, pretrained=pretrained)
-# trunk.reset_classifier(0)
-
-# Using large pretrained efficientnet
-#trunk = EfficientNet.from_pretrained("efficientnet-b7", output_dim)
-try:
-    trunk = EfficientNet.from_pretrained(args.backbone, output_dim)
-except:
-    print("Model {} not found!".format(args.backbone))
-    print("List of models:\n{}".format(list_models()))
-    raise
-
-num_ftrs = trunk._fc.in_features
-trunk._fc = nn.Linear(num_ftrs, output_dim)
-trunk.set_swish(memory_efficient=False)
-
-# checkpoint = torch.load(args.resume)
-# trunk.load_state_dict(checkpoint)
-# Set classification head to identity
-trunk_output_size = output_dim
-trunk = torch.nn.DataParallel(trunk.to(device))
-
-# Set embedder model. This takes in the output of the trunk and outputs the embedding dimension
-embedder = torch.nn.DataParallel(lj_com.MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
-
-# Set optimizers
-trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
-embedder_optimizer = torch.optim.Adam(
-    embedder.parameters(), lr=lr, weight_decay=wd
-)
-loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
+# Training dataset.
 
 train_dataset = lj_com.TrainLoader(
     traindir,
@@ -121,15 +81,38 @@ train_dataset = lj_com.TrainLoader(
 # Retrieve the number of classes from the loader
 num_classes = train_dataset.n_classes
 
-# train_dataset = datasets.ImageFolder(
-#     traindir,
-#     transforms.Compose([
-#         transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
-#         transforms.RandomResizedCrop(input_dim_crop),
-#         transforms.RandomHorizontalFlip(),
-#         transforms.ToTensor(),
-#         normalize,
-#     ]))
+# TRUNK: Set trunk model and replace the softmax layer with an identity function
+
+try:
+    trunk = create_model(args.backbone, num_classes=num_classes, pretrained=pretrained)
+    # trunk.reset_classifier(0)
+    # trunk = EfficientNet.from_pretrained(args.backbone, num_classes)
+    # num_ftrs = trunk._fc.in_features
+    # trunk._fc = nn.Linear(num_ftrs, num_classes)
+    # trunk.set_swish(memory_efficient=False)
+except:
+    print("Model {} not found!".format(args.backbone))
+    print("List of models:\n{}".format(list_models()))
+    raise
+
+# checkpoint = torch.load(args.resume)
+# trunk.load_state_dict(checkpoint)
+# Set classification head to identity
+trunk_output_size = trunk.classifier.in_features
+trunk.classifier = nn.Identity()
+trunk = torch.nn.DataParallel(trunk.to(device))
+
+# EMBEDDER is lj_com.MLP
+
+# Set embedder model. This takes in the output of the trunk and outputs the embedding dimension
+embedder = torch.nn.DataParallel(lj_com.MLP([trunk_output_size, trunk_output_size/2, embedding_dim]).to(device))
+
+# Set optimizers
+trunk_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
+embedder_optimizer = torch.optim.Adam(
+    embedder.parameters(), lr=lr, weight_decay=wd
+)
+loss_optimizer = torch.optim.Adam(trunk.parameters(), lr=model_lr, weight_decay=wd)
 
 # If use external triplet specification, do not use sampler.
 if args.triplet_json or args.compute_triplet:
@@ -197,6 +180,14 @@ def visualizer_hook(umapper, umap_embeddings, labels, split_name, keyname, *args
 
 
 # Create the tester
+measures = ("precision_at_1",
+            "NMI",
+            "AMI",
+            "r_precision",
+            "mean_average_precision_at_r")
+accuracy_calculator = AccuracyCalculator(include=measures,
+                                         k=eval_k,
+                                         device=eval_device)
 tester = testers.GlobalEmbeddingSpaceTester(
     end_of_testing_hook=hooks.end_of_testing_hook,
     # visualizer=umap.UMAP(),
@@ -204,7 +195,7 @@ tester = testers.GlobalEmbeddingSpaceTester(
     dataloader_num_workers=1,
     batch_size=eval_batch_size,
     data_device=eval_device,
-    accuracy_calculator=AccuracyCalculator(k=eval_k, device=eval_device),
+    accuracy_calculator=accuracy_calculator
 )
 
 end_of_epoch_hook = hooks.end_of_epoch_hook(

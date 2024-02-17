@@ -2,6 +2,7 @@
 
 import argparse
 import lj_triplet_sampling as lj
+import lj_common_model as lj_com
 import os
 
 parser = argparse.ArgumentParser(description='Create/Check Triplet sample file')
@@ -34,10 +35,10 @@ def main():
 
     if args.anal_avail:
         samples, _ = lj.lj_list_available(train_dir)
-        dump_analysis(lj.lj_analyze(samples))
+        dump_analysis(lj_com.lj_analyze(samples))
 
     if args.anal_triplet:
-        dump_analysis(lj.lj_analyze(triplet_samples))
+        dump_analysis(lj_com.lj_analyze(triplet_samples))
 
     if args.write_json:
         json_file = os.path.join(args.data, args.write_json)

@@ -1,4 +1,5 @@
 import lj_triplet_sampling as lj
+import lj_common_model as lj_com
 import os
 import copy
     
@@ -84,7 +85,7 @@ class TestSampleUtils:
 
         # count the number of images in each class.  Should have
         # 2 from each class
-        class_count = lj.lj_count_classes(samples)        
+        class_count = lj_com.lj_count_classes(samples)        
         for c in class_count:
             assert class_count[c] == 2
 
@@ -96,7 +97,7 @@ class TestSampleUtils:
 
         # count the number of images in each class.  Should have
         # 2 from each class
-        class_count = lj.lj_count_classes(samples)        
+        class_count = lj_com.lj_count_classes(samples)        
         
         for c in class_count:
             assert class_count[c] == 2
@@ -116,13 +117,13 @@ class TestSampleUtils:
 
     def test_analyze_triplet(self):
         samples = lj.lj_triplet_sampling(TestSampleUtils.test_class_dir, 8, False)
-        triplet_anal = lj.lj_analyze(samples)
+        triplet_anal = lj_com.lj_analyze(samples)
         exp_triplet_anal = (4, 8, 2.0, 2, 2)
         assert triplet_anal == exp_triplet_anal
 
     def test_analyze_avail(self):
         samples, _ = lj.lj_list_available(TestSampleUtils.test_class_dir)
-        avail_anal = lj.lj_analyze(samples)
+        avail_anal = lj_com.lj_analyze(samples)
         exp_avail_anal = (4, 9, 2.25, 2, 3)
         assert avail_anal == exp_avail_anal
 
@@ -151,7 +152,7 @@ class TestSampleUtils:
 
         # count the number of images in each class.  Should have
         # 4 from each class in order to fill out the 2 batches
-        class_count = lj.lj_count_classes(samples)        
+        class_count = lj_com.lj_count_classes(samples)        
         for c in class_count:
             assert class_count[c] == 4
 
@@ -165,7 +166,7 @@ class TestSampleUtils:
 
         # count the number of images in each class.  Should have
         # 2 from each class
-        class_count = lj.lj_count_classes(samples)        
+        class_count = lj_com.lj_count_classes(samples)        
         
         # with copies, count will just be a multiple of 2 in this case
         for c in class_count:
@@ -175,7 +176,7 @@ class TestSampleUtils:
 
     def test_analyze_triplet_allow_copies(self):
         samples = lj.lj_triplet_sampling(TestSampleUtils.test_class_dir, 8, True)
-        triplet_anal = lj.lj_analyze(samples)
+        triplet_anal = lj_com.lj_analyze(samples)
         exp_triplet_anal = (4, 16, 4.0, 4, 4)
         assert triplet_anal == exp_triplet_anal
 
@@ -194,7 +195,7 @@ class TestSampleUtils:
 
     def test_analyze_triplet(self):
         samples = lj.lj_triplet_sampling(TestSampleUtils.test_class_dir, 8, False)
-        triplet_anal = lj.lj_analyze(samples)
+        triplet_anal = lj_com.lj_analyze(samples)
         exp_triplet_anal = (4, 8, 2.0, 2, 2)
         assert triplet_anal == exp_triplet_anal
 

@@ -1,5 +1,10 @@
 import argparse, os
+import lj_common_model as lj_com
+import lj_triplet_sampling as lj_trip
+import numpy as np
 import pytorch_metric_learning
+from pytorch_metric_learning import trainers
+import sys
 import torch
 import torch.nn as nn
 import torchvision
@@ -60,12 +65,12 @@ class TrainLoader(torchvision.datasets.ImageFolder):
         )
 
         if triplet_json_file:
-            self.samples = lj.lj_triplet_read(triplet_json_file)
+            self.samples = lj_trip.lj_triplet_read(triplet_json_file)
         elif compute_triplet:
-            self.samples = lj.lj_triplet_sampling(root, batch_size, allow_copies, weights=weights)
-        self.n_classes, self.n_images, _, _, _ = lj.lj_analyze(self.samples)
+            self.samples = lj_trip.lj_triplet_sampling(root, batch_size, allow_copies, weights=weights)
+        self.n_classes, self.n_images, _, _, _ = lj_com.lj_analyze(self.samples)
 
-class MetricLossAccumGrad(pytorch_metric_learning.trainers.MetricLossOnly):
+class MetricLossAccumGrad(trainers.MetricLossOnly):
     def __init__(self, *args, accumulation_steps=10, **kwargs):
         super().__init__(*args, **kwargs)
         self.accumulation_steps = accumulation_steps
@@ -91,39 +96,38 @@ class MetricLossAccumGrad(pytorch_metric_learning.trainers.MetricLossOnly):
             )
 
 # Common methods
-            
-def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
-    """Finds the class folders in a dataset.
 
-    See :class:`DatasetFolder` for details.
+def lj_count_classes(triplets : List[Tuple[str, int]]) -> Dict[int, int]:
     """
-    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
-    if not classes:
-        raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
-
-    # classes = [int(x) for x in classes] # not sure about this.  Training doesn't assume integer labels
-    class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
-    return classes, class_to_idx
-
-def image_name_to_class(directory: str) -> Dict[str, str]:
-    img_clz = dict()
-    for clz in os.listdir(directory):
-        for img_name in os.listdir(os.path.join(directory, clz)):
-            img_clz[img_name] = clz
-    return img_clz
-
-def image_name_to_index_dictionaries(directory: str) -> Tuple[List[str], Dict[str, int], Dict[str, int]]:
+    Return dictionary of class index to count of images
     """
-    Return list of classes, class to index and image to class index dictionaries
+    # dictionary of class -> n images
+    class_count = {}
+    for _, clidx in triplets:
+        if clidx not in class_count:
+            class_count[clidx] = 0
+        class_count[clidx] += 1
+    return class_count
+
+def lj_analyze(triplets : List[Tuple[str, int]]) -> Tuple[int, int, float, int, int]:
     """
-    classes, class_to_idx = find_classes(directory)
-    img_clz = image_name_to_class(directory)
+    Return tuple of (nclasses, nimages, avg_images_per_class, min_images_in_class, max_images_in_class)
+    """
+    class_count = lj_count_classes(triplets)
 
-    img_to_idx = dict()
-    for img in img_clz:
-        img_to_idx[img] = class_to_idx[img_clz[img]]
-    return classes, class_to_idx, img_to_idx
+    n_classes = len(class_count)
+    total_images = 0
+    max_images = 0
+    min_images = sys.maxsize
+    for clidx in class_count:
+        n_images = class_count[clidx]
+        max_images = max(max_images, n_images)
+        min_images = min(min_images, n_images)
+        total_images += n_images
 
+    avg = float(total_images)/float(n_classes)
+    return (n_classes, total_images, avg, min_images, max_images)
+     
 def create_parser():
     # SETTINGS
     parser = argparse.ArgumentParser(description='PyTorch Metric Training')
@@ -150,12 +154,12 @@ def create_parser():
                         help='optimizer learning rate')
     parser.add_argument('--dim', default=128, type=int,
                         help='dimensionality of embeddings')
-    parser.add_argument('--output-dim', default=1792, type=int,
-                        help='dimensionality of model output')
+    parser.add_argument('--output-dim', default=0, type=int,
+                        help='n trained classes; if 0 use training set (for eval only)')
     parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                         help='weight decay', dest='weight_decay')
     parser.add_argument('--margin', default=0.01, type=float, help='margin')
-    parser.add_argument('--backbone', default='efficientnet-b7', type=str,
+    parser.add_argument('--backbone', default='tf_efficientnet_b7', type=str,
                         help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
     parser.add_argument('--rand_config', default='rand-mstd1',
                         help='Random augment configuration string')
