@@ -35,9 +35,11 @@ def create_trunk(backbone, nclasses, trunk_checkpoint):
         print("List of models:\n{}".format(list_models()))
         raise
 
+    trunk_output_size = trunk.classifier.in_features
+    trunk.classifier = nn.Identity()
     checkpoint = torch.load(trunk_checkpoint)
     trunk.load_state_dict(checkpoint)
-    return trunk
+    return trunk, trunk_output_size
 
 def create_inference_model(trunk, embedder, match_finder, val_dataset):
     inference_model = InferenceModel(trunk=trunk, embedder=embedder, match_finder=match_finder)
@@ -54,7 +56,7 @@ def build_inference_model(args):
 
     if nclasses == 0:
         # use training dataset to determine number of classes
-        traindir = os.path.join(toplevel_dir, "test")
+        traindir = os.path.join(toplevel_dir, "train")
         train_dataset = lj_com.TrainLoader(
             traindir,
             transforms.Compose([
@@ -84,12 +86,12 @@ def build_inference_model(args):
             lj_com.normalize,
         ]))
 
-    print(embedding_checkpoint_file)
-    embedder = create_embedder(nclasses, embedding_dim, embedding_checkpoint_file)
-    embedder = torch.nn.DataParallel(embedder).to(eval_device)
-
-    trunk = create_trunk(args.backbone, nclasses, trunk_checkpoint_file)
+    trunk, trunk_output_size  = create_trunk(args.backbone, nclasses, trunk_checkpoint_file)
     trunk = torch.nn.DataParallel(trunk.to(eval_device))
+
+    print("nclasses {} embedding file {}".format(nclasses, embedding_checkpoint_file))
+    embedder = create_embedder(trunk_output_size, embedding_dim, embedding_checkpoint_file)
+    embedder = torch.nn.DataParallel(embedder).to(eval_device)
 
     match_finder = MatchFinder(distance=CosineSimilarity(), threshold=args.similarity_threshold)
     inference = create_inference_model(trunk, embedder, match_finder, val_dataset)

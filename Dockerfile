@@ -53,8 +53,18 @@ ENV PATH=/workspace/miniconda/bin:$PATH
 
 RUN conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch
 
+# Downloading gcloud package
+RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz
+
+# Installing the package
+RUN mkdir -p /usr/local/gcloud \
+  && tar -C /usr/local/gcloud -xvf /tmp/google-cloud-sdk.tar.gz \
+  && /usr/local/gcloud/google-cloud-sdk/install.sh
+
 RUN cd /workspace && pip install -r requirements.txt \
     && pip install -e . \
     && python -m pip install --upgrade pip
 
 USER user
+ENV PATH $PATH:/usr/local/gcloud/google-cloud-sdk/bin
+
