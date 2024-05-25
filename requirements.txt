@@ -18,3 +18,4 @@ umap-learn
 efficientnet_pytorch
 protobuf
 pytorch_metric_learning
+faiss-gpu
