@@ -12,10 +12,8 @@ ipywidgets
 umap
 record_keeper
 scipy
-faiss-gpu
 timm
 umap-learn
 efficientnet_pytorch
 protobuf
 pytorch_metric_learning
-faiss-gpu

@@ -14,25 +14,25 @@
 #  'toplevel-output' \
 #  'output-tag'
 
-backbone=$1
+backbone=${1}
 input_size=$2
 input_crop=$3
 
 batch_size=$4
 embedding_dim=$5
 epochs=$6
-rand_config=$7
+rand_config=${7}
 
 # input / output data
-results_dir=$8
-data_dir=$9
+results_dir=${8}
+data_dir=${9}
 output_bucket=${10}
 top_level_output=${11}
 result_output_dir=${12}
 output_tag=${13}
 
 output_target=${output_bucket}/${top_level_output}
-output_path=${results_dir}/${top_level_output}/${result_output_dir}/${output_tag}
+output_path=${results_dir}/${top_level_output}/results/${result_output_dir}/${output_tag}
 echo "backbone $backbone input-size $input_size input-crop $input_crop batch-size $batch_size"
 echo "embedding-dim $embedding_dim epochs $epochs rand-config '$rand_config'"
 echo "input-dir '$data_dir' results-dir '$results_dir' output-path '$output_path'"
@@ -45,7 +45,7 @@ python lj_train_model.py \
     --batch-size $batch_size \
     --dim $embedding_dim \
     --epochs $epochs \
-    --rand_config $rand_config \
+    --rand_config "$rand_config" \
     --base-log-dir ${output_path} \
     $data_dir
 

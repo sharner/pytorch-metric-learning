@@ -24,7 +24,9 @@ from pytorch_metric_learning import losses, miners, samplers, testers, trainers
 from pytorch_metric_learning.utils import common_functions
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
+from timm.data.auto_augment import rand_augment_transform
 from timm.models import create_model, list_models
+from timm.data.transforms import RandomResizedCropAndInterpolation
 from efficientnet_pytorch import EfficientNet
 
 logging.getLogger().setLevel(logging.INFO)
@@ -63,15 +65,26 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Training dataset.
 
+if args.rand_config:
+    rand_tfm = rand_augment_transform(config_str=args.rand_config, hparams={'img_mean': (104, 117, 128)})
+    transform = transforms.Compose([
+            RandomResizedCropAndInterpolation(input_dim_crop),
+            transforms.RandomHorizontalFlip(),
+            rand_tfm,
+            transforms.ToTensor(),
+            normalize,
+    ])
+else:
+    transform = transforms.Compose([
+            RandomResizedCropAndInterpolation(input_dim_crop),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+    ])
+
 train_dataset = lj_com.TrainLoader(
     traindir,
-    transforms.Compose([
-        transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
-        transforms.RandomResizedCrop(input_dim_crop),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        normalize,
-        ]),
+    transform,
     triplet_json_file=args.triplet_json,
     compute_triplet=args.compute_triplet,
     batch_size = batch_size,
@@ -136,7 +149,10 @@ val_dataset = datasets.ImageFolder(testdir, transforms.Compose([
 loss = losses.TripletMarginLoss(margin=margin)
 
 # Set the mining function
-miner = miners.MultiSimilarityMiner(epsilon=margin)
+#miner = miners.MultiSimilarityMiner(epsilon=margin)
+miner = miners.BatchEasyHardMiner(
+    pos_strategy=miners.BatchEasyHardMiner.EASY,
+    neg_strategy=miners.BatchEasyHardMiner.SEMIHARD)
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}

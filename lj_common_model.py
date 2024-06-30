@@ -161,7 +161,7 @@ def create_parser():
     parser.add_argument('--margin', default=0.01, type=float, help='margin')
     parser.add_argument('--backbone', default='tf_efficientnet_b7', type=str,
                         help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
-    parser.add_argument('--rand_config', default='rand-mstd1',
+    parser.add_argument('--rand_config', default='',
                         help='Random augment configuration string')
     parser.add_argument('--resume', default=None, help='resume from given file')
     parser.add_argument('--eval-only', default=False, action='store_true',

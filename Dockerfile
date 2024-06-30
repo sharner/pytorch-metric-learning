@@ -1,13 +1,19 @@
-FROM nvidia/cuda:11.3.1-devel-ubuntu20.04 AS app
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 AS app
 
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG MINICONDA="Miniconda3-py310_23.1.0-1-Linux-x86_64.sh"
 
-ARG USER_ID=1000
-ARG GROUP_ID=1000
+# install miniconda
+ENV CONDA_HOME=/opt/conda
+ARG conda_ver="py311_24.5.0-0-Linux-x86_64"
+
+#ARG user_id=${USER_ID}
+#ARG group_id=${GROUP_ID}
+# hack.  Is there a better way?  1002=forest 135=docker on Thor
+ARG user_id=1002
+ARG group_id=135
 
 # Install apt dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,36 +31,74 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     unzip
 
+# Install dependencies for VS Code so that we can do VS Code Tunnels
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y \
+    libc-ares-dev \
+    liblz4-dev \
+    libfreetype6-dev \
+    ninja-build \
+    gnome-desktop-testing \
+    libre2-dev \
+    libasound2-dev \
+    libpulse-dev \
+    libaudio-dev \
+    libjack-dev \
+    libsndio-dev \
+    libx11-dev \
+    libxext-dev \
+    libxrandr-dev \
+    libxcursor-dev \
+    libxfixes-dev \
+    libxi-dev \
+    libxss-dev \
+    libxkbcommon-dev \
+    libnspr4 \
+    libnss3 \
+    libgbm-dev \
+    libgl1-mesa-dev \
+    libgles2-mesa-dev \
+    libegl1-mesa-dev \
+    libdbus-1-dev \
+    libibus-1.0-dev \
+    libudev-dev \
+    fcitx-libs-dev \
+    xdg-utils \
+    x11-apps \
+    sudo
+
 # Simple root password in case we want to customize the container
 RUN echo "root:root" | chpasswd
-RUN echo "Group ID $GROUP_ID"
-RUN echo "User id $USER_ID"
-RUN addgroup --gid $GROUP_ID user
+RUN echo "Group ID $group_id"
+RUN echo "User id $user_id"
+ENV APP_USER="user"
+RUN addgroup --gid ${group_id} ${APP_USER}
 
-RUN useradd -G video,audio -ms /bin/bash --uid $USER_ID --gid $GROUP_ID user
-
-RUN apt-get update && \
-    apt-get -y install sudo
+RUN useradd -G video,audio -ms /bin/bash --uid $user_id --gid $group_id user
 
 RUN echo "user:user" | chpasswd && adduser user sudo
 
 WORKDIR /workspace
-
 COPY . /workspace
 
 ENV LAYERJOT_HOME="/layerjot"
-ENV PATH=$PATH
-ENV PYTHONPATH=$LAYERJOT_HOME/FGVC-PIM
 
-RUN wget https://repo.anaconda.com/miniconda/${MINICONDA} \
-    && bash ${MINICONDA} -b -p miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-${conda_ver}.sh \
+    && bash Miniconda3-${conda_ver}.sh -b -p ${CONDA_HOME}
+ENV PATH=/home/user/.local/bin:${CONDA_HOME}/bin:$PATH
 
-ENV PATH=/workspace/miniconda/bin:$PATH
-
-RUN conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch
+# RUN conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch faiss-gpu=1.8.0
+RUN conda install cudatoolkit=11.4 faiss-gpu=1.8.0 -c nvidia -c pytorch
 
 # Downloading gcloud package
 RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz
+
+# This fails in build step, so you can run it by hand in the container.
+# Install code CLI
+RUN curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' --output vscode_cli.tar.gz \
+    && tar -xf vscode_cli.tar.gz \
+    && rm -f vscode_cli.tar.gz \
+    && mv code /usr/local/bin/code
 
 # Installing the package
 RUN mkdir -p /usr/local/gcloud \
@@ -66,5 +110,5 @@ RUN cd /workspace && pip install -r requirements.txt \
     && python -m pip install --upgrade pip
 
 USER user
-ENV PATH $PATH:/usr/local/gcloud/google-cloud-sdk/bin
+ENV PATH=$PATH:/usr/local/gcloud/google-cloud-sdk/bin
 
