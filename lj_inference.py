@@ -88,6 +88,7 @@ def build_inference_model(toplevel_data_dir, backbone, nclasses, eval_device,
         )
         # Retrieve the number of classes from the loader
         nclasses = train_dataset.n_classes
+        print("nclasses {}".format(nclasses))
 
     testdir = os.path.join(toplevel_data_dir, "test")
     val_dataset = datasets.ImageFolder(testdir, transforms.Compose([

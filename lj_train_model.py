@@ -152,7 +152,7 @@ loss = losses.TripletMarginLoss(margin=margin)
 #miner = miners.MultiSimilarityMiner(epsilon=margin)
 miner = miners.BatchEasyHardMiner(
     pos_strategy=miners.BatchEasyHardMiner.EASY,
-    neg_strategy=miners.BatchEasyHardMiner.SEMIHARD)
+    neg_strategy=miners.BatchEasyHardMiner.HARD)
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}

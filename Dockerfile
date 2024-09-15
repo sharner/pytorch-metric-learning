@@ -9,11 +9,12 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV CONDA_HOME=/opt/conda
 ARG conda_ver="py311_24.5.0-0-Linux-x86_64"
 
+RUN 
 #ARG user_id=${USER_ID}
 #ARG group_id=${GROUP_ID}
-# hack.  Is there a better way?  1002=forest 135=docker on Thor
+# hack.  Is there a better way?  1002=forest 1004=data on Thor
 ARG user_id=1002
-ARG group_id=135
+ARG group_id=1004
 
 # Install apt dependencies
 RUN apt-get update && apt-get install -y \
