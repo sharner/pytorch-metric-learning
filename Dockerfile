@@ -9,7 +9,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV CONDA_HOME=/opt/conda
 ARG conda_ver="py311_24.5.0-0-Linux-x86_64"
 
-RUN 
 #ARG user_id=${USER_ID}
 #ARG group_id=${GROUP_ID}
 # hack.  Is there a better way?  1002=forest 1004=data on Thor
