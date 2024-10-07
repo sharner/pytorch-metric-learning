@@ -159,6 +159,7 @@ def create_parser():
     parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                         help='weight decay', dest='weight_decay')
     parser.add_argument('--margin', default=0.01, type=float, help='margin')
+    parser.add_argument('--epsilon', default=0.1, type=float, help='epsilon')
     parser.add_argument('--backbone', default='tf_efficientnet_b7', type=str,
                         help='type of model to use: "resnet" for Resnet152, "mobilenet" for Mobilenet_v2, "efficientb7" + "efficientb0" for Efficient Net B0 and B7, "efficientlite" for Efficient Net Lite')
     parser.add_argument('--rand_config', default='',
