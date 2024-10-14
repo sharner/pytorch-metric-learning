@@ -2,8 +2,9 @@ import lj_triplet_sampling as lj
 import lj_common_model as lj_com
 import os
 import copy
-    
-class TestSampleUtils:
+import unittest
+
+class TestSampleUtils(unittest.TestCase):
     test_class_dir = "./test_classes"
     exp_class_idx_list = set([0, 1, 2, 3])
     exp_class_to_idx = {'1' : 0, '10' : 1, '20': 2, '5' : 3}
