@@ -88,7 +88,7 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-${conda_ver}.sh \
 ENV PATH=/home/user/.local/bin:${CONDA_HOME}/bin:$PATH
 
 # RUN conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch faiss-gpu=1.8.0
-RUN conda install cudatoolkit=11.4 faiss-gpu=1.8.0 -c nvidia -c pytorch
+RUN conda install -y cudatoolkit=11.4 faiss-gpu=1.8.0 -c nvidia -c pytorch
 
 # Downloading gcloud package
 RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz
@@ -112,3 +112,4 @@ RUN cd /workspace && pip install -r requirements.txt \
 USER user
 ENV PATH=$PATH:/usr/local/gcloud/google-cloud-sdk/bin
 
+ENTRYPOINT [ "bash" ]
