@@ -15,20 +15,20 @@
 #  'output-tag'
 
 backbone=${BACKBONE:-"tf_efficientnetv2_m"}
-input_size=${INPUT_SIZE:-320}
-input_crop=${INPUT_CROP:-300}
+input_size=${INPUT_SIZE:-640}
+input_crop=${INPUT_CROP:-600}
 
 batch_size=${BATCH_SIZE:-32}
 embedding_dim=${EMBEDDING_DIM:-512}
-epochs=${EPOCHS:-30}
-rand_config=${RAND_CONFIG:-"rand-mstd1"}
+epochs=${EPOCHS:-60}
+rand_config=${RAND_CONFIG:-"rand-m5-mstd0.1"}
 
 # input / output data
 results_dir=${RESULTS_DIR:-"/mnt/data/results/triplet-learning"}
 data_dir=${DATA_DIR:-"/mnt/data/triplet-learning"}
 output_bucket=${OUTPUT_BUCKET:-"gs://ljcv-model-artifacts"}
 top_level_output=${TOP_LEVEL_OUTPUT:-"pytorch-metric-learning"}
-result_output_dir=${RESULT_OUTPUT_DIR:-"20240621"}
+result_output_dir=${RESULT_OUTPUT_DIR:-"20240828"}
 output_tag=${OUTPUT_TAG:-"pymetric.effv2_m.b${batch_size}.dim${embedding_dim}.im${input_size}.defs"}
 
 output_target=${output_bucket}/${top_level_output}
