@@ -152,7 +152,7 @@ def create_parser():
                         help='initial model learning rate')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='optimizer learning rate')
-    parser.add_argument('--dim', default=128, type=int,
+    parser.add_argument('--dim', default=512, type=int,
                         help='dimensionality of embeddings')
     parser.add_argument('--output-dim', default=0, type=int,
                         help='n trained classes; if 0 use training set (for eval only)')
@@ -169,7 +169,7 @@ def create_parser():
                         help='evaluate model only')
     parser.add_argument('--base-log-dir', default=".", type=str,
                         help = 'base directory for all logs')
-    parser.add_argument('--input-size', default=650, type=int,
+    parser.add_argument('--input-size', default=640, type=int,
                         help='resize images to this size for input')
     parser.add_argument('--input-crop', default=600, type=int,
                         help='random crop images to this size')
