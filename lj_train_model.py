@@ -55,6 +55,7 @@ model_lr = args.modellr
 alpha = 2  # just for test for now
 beta = 50
 base = 0.5
+filter_percentage = 0.25
 
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
@@ -78,6 +79,9 @@ if args.rand_config:
     ])
 else:
     transform = transforms.Compose([
+            RandomResizedCropAndInterpolation(input_dim_crop),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
             normalize,
     ])
 
@@ -148,11 +152,33 @@ val_dataset = datasets.ImageFolder(testdir, transforms.Compose([
 # loss = losses.TripletMarginLoss(margin=margin)
 loss = losses.MultiSimilarityLoss(alpha=alpha, beta=beta, base=base)
 
+class ComboMiner(miners.BaseMiner):
+    def __init__(self,
+                 filter_percentage=0.25,
+                 epsilon=0.1,
+                 pos_strategy=miners.BatchEasyHardMiner.EASY,
+                 neg_strategy=miners.BatchEasyHardMiner.SEMIHARD, **kwargs):
+        super().__init__(**kwargs)
+        self.hdc_miner = miners.HDCMiner(filter_percentage=filter_percentage)
+        self.multisim_miner = miners.MultiSimilarityMiner(epsilon=epsilon)
+        self.batch_miner = miners.BatchEasyHardMiner(pos_strategy=pos_strategy,
+                                                     neg_strategy=neg_strategy)
+        
+    def mine(self, embeddings, labels, ref_emb, ref_labels):
+        hard_pairs = self.batch_miner(embeddings, labels)
+        self.hdc_miner.set_idx_externally(hard_pairs, labels)
+        a1, p, a2, n = self.hdc_miner(embeddings, labels)
+        return a1, p, a2, n       
+
 # Set the mining function
-miner = miners.MultiSimilarityMiner(epsilon=epsilon)
-# miner = miners.BatchEasyHardMiner(
-#     pos_strategy=miners.BatchEasyHardMiner.EASY,
-#     neg_strategy=miners.BatchEasyHardMiner.HARD)
+miner_simloss = miners.MultiSimilarityMiner(epsilon=epsilon)
+miner_hard = miners.BatchEasyHardMiner(
+    pos_strategy=miners.BatchEasyHardMiner.EASY,
+    neg_strategy=miners.BatchEasyHardMiner.HARD)
+miner_combo = ComboMiner(filter_percentage=filter_percentage, epsilon=epsilon,
+                         pos_strategy=miners.BatchEasyHardMiner.EASY,
+                         neg_strategy=miners.BatchEasyHardMiner.SEMIHARD)
+miner = miner_combo # miner_combo or miner_hard or miner_simloss
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}

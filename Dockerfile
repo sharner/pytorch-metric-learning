@@ -95,7 +95,7 @@ RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tm
 
 # This fails in build step, so you can run it by hand in the container.
 # Install code CLI
-RUN curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' --output vscode_cli.tar.gz \
+RUN curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' -A 'Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/81.0' -o vscode_cli.tar.gz \
     && tar -xf vscode_cli.tar.gz \
     && rm -f vscode_cli.tar.gz \
     && mv code /usr/local/bin/code
