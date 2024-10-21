@@ -170,6 +170,26 @@ log_dir = os.path.join(args.base_log_dir, "lj_logs")
 tensor_dir = os.path.join(args.base_log_dir, "lj_tensorboard")
 model_dir = os.path.join(args.base_log_dir, "lj_saved_models")
 
+def create_dir_with_permissions(dir_path):
+    """
+    Create specified directory with permission 0o775.
+    Note have to override umask of 0o0022 in order to set
+    proper group permissions.  Could use umask of 0o0002,
+    but that seems confusing.
+    """
+    if os.path.exists(dir_path):
+        if not os.path.isdir(dir_path):
+            raise Exception("{} is not a directory!".format(dir_path))
+        return
+    old_umask = os.umask(0)
+    try:
+        os.mkdir(dir_path, 0o775)
+    finally:
+        os.umask(old_umask)
+
+for d in [args.base_log_dir, log_dir, tensor_dir, model_dir]:
+    create_dir_with_permissions(d)
+
 record_keeper, _, _ = logging_presets.get_record_keeper(
     log_dir, tensor_dir
 )
