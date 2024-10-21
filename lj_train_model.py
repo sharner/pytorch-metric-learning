@@ -19,6 +19,7 @@ import pytorch_metric_learning.utils.logging_presets as logging_presets
 from pytorch_metric_learning import losses, miners, samplers, testers  # , trainers
 # from pytorch_metric_learning.utils import common_functions
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
+from pytorch_metric_learning import regularizers
 
 from timm.data.auto_augment import rand_augment_transform
 from timm.models import create_model, list_models
@@ -55,6 +56,7 @@ model_lr = args.modellr
 alpha = 2  # just for test for now
 beta = 50
 base = 0.5
+filter_percentage = 0.25
 
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
@@ -78,6 +80,9 @@ if args.rand_config:
     ])
 else:
     transform = transforms.Compose([
+            RandomResizedCropAndInterpolation(input_dim_crop),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
             normalize,
     ])
 
@@ -97,6 +102,7 @@ num_classes = train_dataset.n_classes
 
 try:
     trunk = create_model(args.backbone, num_classes=num_classes, pretrained=pretrained)
+    # trunk = lj_com.TorchWrap(trunk)
     # trunk.reset_classifier(0)
     # trunk = EfficientNet.from_pretrained(args.backbone, num_classes)
     # num_ftrs = trunk._fc.in_features
@@ -110,8 +116,11 @@ except:
 # checkpoint = torch.load(args.resume)
 # trunk.load_state_dict(checkpoint)
 # Set classification head to identity
-trunk_output_size = trunk.classifier.in_features
-trunk.classifier = nn.Identity()
+dummy_in = torch.randn([1, 3, input_dim_resize, input_dim_resize])
+dummy_out = trunk(dummy_in)
+trunk_output_size = dummy_out.shape[1]
+# trunk_output_size = trunk.classifier.in_features
+# trunk.classifier = nn.Identity()
 trunk = torch.nn.DataParallel(trunk.to(device))
 
 # EMBEDDER is lj_com.MLP
@@ -146,13 +155,36 @@ val_dataset = datasets.ImageFolder(testdir, transforms.Compose([
 
 # Set the loss function
 # loss = losses.TripletMarginLoss(margin=margin)
-loss = losses.MultiSimilarityLoss(alpha=alpha, beta=beta, base=base)
+reg = regularizers.LpRegularizer()
+loss = losses.MultiSimilarityLoss(alpha=alpha, beta=beta, base=base, embedding_regularizer=reg)
+
+class ComboMiner(miners.BaseMiner):
+    def __init__(self,
+                 filter_percentage=0.25,
+                 epsilon=0.1,
+                 pos_strategy=miners.BatchEasyHardMiner.EASY,
+                 neg_strategy=miners.BatchEasyHardMiner.SEMIHARD, **kwargs):
+        super().__init__(**kwargs)
+        self.hdc_miner = miners.HDCMiner(filter_percentage=filter_percentage)
+        self.multisim_miner = miners.MultiSimilarityMiner(epsilon=epsilon)
+        self.batch_miner = miners.BatchEasyHardMiner(pos_strategy=pos_strategy,
+                                                     neg_strategy=neg_strategy)
+        
+    def mine(self, embeddings, labels, ref_emb, ref_labels):
+        hard_pairs = self.batch_miner(embeddings, labels)
+        self.hdc_miner.set_idx_externally(hard_pairs, labels)
+        a1, p, a2, n = self.hdc_miner(embeddings, labels)
+        return a1, p, a2, n       
 
 # Set the mining function
-miner = miners.MultiSimilarityMiner(epsilon=epsilon)
-# miner = miners.BatchEasyHardMiner(
-#     pos_strategy=miners.BatchEasyHardMiner.EASY,
-#     neg_strategy=miners.BatchEasyHardMiner.HARD)
+miner_simloss = miners.MultiSimilarityMiner(epsilon=epsilon)
+miner_hard = miners.BatchEasyHardMiner(
+    pos_strategy=miners.BatchEasyHardMiner.EASY,
+    neg_strategy=miners.BatchEasyHardMiner.HARD)
+miner_combo = ComboMiner(filter_percentage=filter_percentage, epsilon=epsilon,
+                         pos_strategy=miners.BatchEasyHardMiner.EASY,
+                         neg_strategy=miners.BatchEasyHardMiner.SEMIHARD)
+miner = miner_simloss # miner_combo or miner_hard or miner_simloss
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}
@@ -249,6 +281,7 @@ trainer = lj_com.MetricLossAccumGrad(
     train_dataset,
     mining_funcs=mining_funcs,
     sampler=sampler,
+    freeze_trunk_batchnorm=args.freeze_BN,
     dataloader_num_workers=2,
     # end_of_iteration_hook=hooks.end_of_iteration_hook,
     end_of_epoch_hook=end_of_epoch_hook,

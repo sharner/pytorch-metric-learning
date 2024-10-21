@@ -7,6 +7,7 @@ from pytorch_metric_learning import trainers
 import sys
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
 
@@ -19,6 +20,15 @@ std=[0.229, 0.224, 0.225]
 normalize = torchvision.transforms.Normalize(mean=mean, std=std)
 
 # common classes
+class TorchWrap(nn.Module):
+    def __init__(self, model):
+        super(TorchWrap, self).__init__()
+        self.model_ = model
+
+    def forward(self, input):
+        x = self.model_(input)
+        x = F.normalize(x, p=2, dim=1)
+        return x
 
 class MLP(nn.Module):
     # layer_sizes[0] is the dimension of the input
@@ -173,4 +183,5 @@ def create_parser():
                         help='resize images to this size for input')
     parser.add_argument('--input-crop', default=600, type=int,
                         help='random crop images to this size')
+    parser.add_argument('--freeze-BN', action='store_true', help='Freeze Batch Normalization layers')
     return parser
