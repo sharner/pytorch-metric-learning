@@ -5,27 +5,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 # import record_keeper
 import torch
-import sys, os
+import os
 import torch.nn as nn
-import argparse
-from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
 
-import lj_triplet_sampling as lj
 import lj_common_model as lj_com
 
 # import umap
 from cycler import cycler
-from PIL import Image
 from torchvision import datasets, transforms
 
 import pytorch_metric_learning
 import pytorch_metric_learning.utils.logging_presets as logging_presets
-from pytorch_metric_learning import losses, miners, samplers, testers, trainers
-from pytorch_metric_learning.utils import common_functions
+from pytorch_metric_learning import losses, miners, samplers, testers  # , trainers
+# from pytorch_metric_learning.utils import common_functions
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
+from timm.data.auto_augment import rand_augment_transform
 from timm.models import create_model, list_models
-from efficientnet_pytorch import EfficientNet
+from timm.data.transforms import RandomResizedCropAndInterpolation
 
 logging.getLogger().setLevel(logging.INFO)
 logging.info("VERSION %s" % pytorch_metric_learning.__version__)
@@ -44,38 +41,53 @@ embedding_dim = args.dim
 batch_size = args.batch_size
 num_epochs = args.epochs
 margin = args.margin
+epsilon = args.epsilon
 wd = args.weight_decay
 m_per_class = 2
 eval_batch_size = args.eval_batch_size
-eval_k="max_bin_count"
-patience=3
-lr=args.lr
-model_lr=args.modellr
-# eval_k=10
+eval_k = "max_bin_count"
+patience = 3
+lr = args.lr
+model_lr = args.modellr
+# eval_k = 10
+
+# Loss function parameters
+alpha = 2  # just for test for now
+beta = 50
+base = 0.5
+
 # Need to run eval on the CPU because training holds onto GPU memory
 eval_device = torch.device("cpu")
 
 normalize = lj_com.normalize
 traindir = os.path.join(toplevel_dir, "train")
 testdir = os.path.join(toplevel_dir, "test")
-pretrained=True
+pretrained = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Training dataset.
 
+if args.rand_config:
+    rand_tfm = rand_augment_transform(config_str=args.rand_config, hparams={'img_mean': (104, 117, 128)})
+    transform = transforms.Compose([
+            RandomResizedCropAndInterpolation(input_dim_crop),
+            transforms.RandomHorizontalFlip(),
+            rand_tfm,
+            transforms.ToTensor(),
+            normalize,
+    ])
+else:
+    transform = transforms.Compose([
+            normalize,
+    ])
+
 train_dataset = lj_com.TrainLoader(
     traindir,
-    transforms.Compose([
-        transforms.Resize(input_dim_resize), # Remove this when using EfficientNet - or test with it
-        transforms.RandomResizedCrop(input_dim_crop),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        normalize,
-        ]),
+    transform,
     triplet_json_file=args.triplet_json,
     compute_triplet=args.compute_triplet,
-    batch_size = batch_size,
-    allow_copies = args.allow_copies
+    batch_size=batch_size,
+    allow_copies=args.allow_copies
 )
 
 # Retrieve the number of classes from the loader
@@ -133,10 +145,14 @@ val_dataset = datasets.ImageFolder(testdir, transforms.Compose([
 # Loss, miner, sampler
 
 # Set the loss function
-loss = losses.TripletMarginLoss(margin=margin)
+# loss = losses.TripletMarginLoss(margin=margin)
+loss = losses.MultiSimilarityLoss(alpha=alpha, beta=beta, base=base)
 
 # Set the mining function
-miner = miners.MultiSimilarityMiner(epsilon=margin)
+miner = miners.MultiSimilarityMiner(epsilon=epsilon)
+# miner = miners.BatchEasyHardMiner(
+#     pos_strategy=miners.BatchEasyHardMiner.EASY,
+#     neg_strategy=miners.BatchEasyHardMiner.HARD)
 
 # Package the above stuff into dictionaries.
 models = {"trunk": trunk, "embedder": embedder}
@@ -161,13 +177,14 @@ hooks = logging_presets.get_hook_container(record_keeper)
 dataset_dict = {"val": val_dataset}
 model_folder = model_dir
 
+
 def visualizer_hook(umapper, umap_embeddings, labels, split_name, keyname, *args):
     logging.info(
         "UMAP plot for the {} split and label set {}".format(split_name, keyname)
     )
     label_set = np.unique(labels)
     num_classes = len(label_set)
-    fig = plt.figure(figsize=(20, 15))
+    # fig = plt.figure(figsize=(20, 15))
     plt.gca().set_prop_cycle(
         cycler(
             "color", [plt.cm.nipy_spectral(i) for i in np.linspace(0, 0.9, num_classes)]

@@ -345,6 +345,19 @@ The queue can be cleared like this:
 loss_fn.reset_queue()
 ```
 
+## DynamicSoftMarginLoss
+[Learning Local Descriptors With a CDF-Based Dynamic Soft Margin](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhang_Learning_Local_Descriptors_With_a_CDF-Based_Dynamic_Soft_Margin_ICCV_2019_paper.pdf)
+```python
+losses.DynamicSoftMarginLoss(min_val=-2.0, num_bins=10, momentum=0.01, **kwargs)
+```
+
+**Parameters**:
+
+* **min_val**: minimum significative value for `d_pos - d_neg`
+* **num_bins**: number of equally spaced bins for the partition of the interval `[min_val, ∞]`
+* **momentum**: weight assigned to the histogram computed from the current batch
+
+
 ## FastAPLoss
 [Deep Metric Learning to Rank](http://openaccess.thecvf.com/content_CVPR_2019/papers/Cakir_Deep_Metric_Learning_to_Rank_CVPR_2019_paper.pdf){target=_blank}
 
@@ -889,6 +902,30 @@ loss = loss_fn(embeddings, labels)
 ```python
 losses.PNPLoss(b=2, alpha=1, anneal=0.01, variant="O", **kwargs)
 ```
+**Equation**:
+
+![PNP_loss_equation](imgs/PNP_loss_equation.png){: style="height:300px"}
+
+**Parameters**:
+
+* **b**: The boundary of PNP-Ib (see equation 9 above). The paper uses 2.
+* **alpha**: The power of PNP-Dq (see equation 13 above). The paper uses 8.
+* **anneal**: The temperature of the sigmoid function. (The sigmoid function is used for `R` in the equations above.) The paper uses 0.01.
+* **variant**: The name of the variant. The options are {"Ds", "Dq", "Iu", "Ib", "O"}. The paper uses "Dq".
+
+**Default distance**:
+
+- [```CosineSimilarity()```](distances.md#cosinesimilarity)
+    - This is the only compatible distance.
+
+**Default reducer**: 
+
+ - [MeanReducer](reducers.md#meanreducer)
+
+**Reducer input**:
+
+* **loss**: The loss per element that has at least 1 positive in the batch. Reduction type is ```"element"```.
+
 
 
 ## ProxyAnchorLoss
@@ -968,6 +1005,20 @@ loss_optimizer.step()
 **Reducer input**:
 
 * **loss**: The loss per element in the batch, that results in a non zero exponent in the cross entropy expression. Reduction type is ```"element"```.
+
+## RankedListLoss
+[Ranked List Loss for Deep Metric Learning](https://arxiv.org/abs/1903.03238)
+```python
+losses.RankedListLoss(margin, Tn, imbalance=0.5, alpha=None, Tp=0, **kwargs)
+```
+
+**Parameters**:
+
+* **margin** (float): margin between positive and negative set
+* **imbalance** (float): tradeoff between positive and negative sets. As the name suggests this takes into account
+                    the imbalance between positive and negative samples in the dataset
+* **alpha** (float): smallest distance between negative points
+* **Tp & Tn** (float): temperatures for, respectively, positive and negative pairs weighting.
 
 
 ## SelfSupervisedLoss

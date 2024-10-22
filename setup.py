@@ -31,6 +31,7 @@ setuptools.setup(
     url="https://github.com/KevinMusgrave/pytorch-metric-learning",
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
+    license_files=('LICENSE',),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -38,7 +39,7 @@ setuptools.setup(
     ],
     python_requires=">=3.0",
     install_requires=[
-        "numpy",
+        "numpy < 2.0",
         "scikit-learn",
         "tqdm",
         "torch >= 1.6.0",
