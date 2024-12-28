@@ -80,7 +80,7 @@ def lj_available_images_per_class(
 def lj_next_anchor_set(class_idx_list : set,
                        n_anchor_class: int,
                        available_images : Dict[int, set],
-                       allow_copies) -> Tuple[set[int], set[int]]:
+                       allow_copies) -> Tuple[Set[int], Set[int]]:
     """Choose the next set of n_ref_classes classes
     """
     next_class_idx_list = [c for c in class_idx_list]
@@ -117,7 +117,7 @@ def lj_next_anchor_set(class_idx_list : set,
     avail_query_classes = filter(lambda x: len(available_images[x]) >= min_query_images, query_class_idx_list)
     return anchor_class_idx_list, avail_query_classes
 
-def lj_image_samples(class_set : set[int],
+def lj_image_samples(class_set : Set[int],
                      avail_images_per_class : Dict[int, set],
                      all_images_per_class: Dict[int, set],
                      allow_copies) -> List[Tuple[str, int]]:
@@ -154,7 +154,7 @@ def lj_image_samples(class_set : set[int],
                 avail_images_per_class[cidx].remove(path)
     return next_samples
 
-def lj_random_class_sample(class_set : set[int],
+def lj_random_class_sample(class_set : Set[int],
                            n_anchor_class : int) -> List[int]:
     """
     Return randomly selected set of n_anchor_class out of
