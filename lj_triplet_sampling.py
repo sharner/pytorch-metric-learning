@@ -6,7 +6,7 @@ import json
 import random
 import sys
 import copy
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 import lj_common_model as lj_com
 
 # from PIL import Image
@@ -65,7 +65,7 @@ def lj_list_available(
 
 def lj_available_images_per_class(
         directory: str,
-) -> Tuple[Dict[int, List[str]], List[Tuple[str, int]], set[int], Dict[str,int]]:
+) -> Tuple[Dict[int, List[str]], List[Tuple[str, int]], Set[int], Dict[str, int]]:
     samples, class_to_idx = lj_list_available(directory)
 
     # make list of class indices
@@ -85,7 +85,7 @@ def lj_next_anchor_set(class_idx_list : set,
     """
     next_class_idx_list = [c for c in class_idx_list]
     random.shuffle(next_class_idx_list)
-    
+
     # Make sure that there are at least 2 images for any returned if we don't allow copies
     min_anchor_images = 1 if allow_copies else 2
 
@@ -95,7 +95,7 @@ def lj_next_anchor_set(class_idx_list : set,
             anchor_class_idx_list.add(candidate)
             if len(anchor_class_idx_list) == n_anchor_class:
                 break
-    
+
     # If we have no more candidate classes, we are done.
     if len(anchor_class_idx_list) == 0:
         return [], class_idx_list
@@ -250,6 +250,6 @@ def lj_triplet_read(path : str) -> List[Tuple[str, int]]:
 def lj_triplet_write(path : str, triplets : List[Tuple[str, int]]):
     """
     Write triplet samples to given json file
-    """ 
+    """
     with open(path, "w") as outfile:
         json.dump(triplets, outfile)
